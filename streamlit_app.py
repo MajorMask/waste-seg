@@ -232,7 +232,7 @@ class WasteClassifierApp:
             if uploaded_file is not None:
                 # Display the image
                 image = Image.open(uploaded_file)
-                st.image(image, caption="Uploaded Image", use_column_width=True)
+                st.image(image, caption="Uploaded Image", use_container_width=True)
                 
                 # Classification button
                 if st.button("🔍 Classify Waste", type="primary"):

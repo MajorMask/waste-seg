@@ -127,6 +127,9 @@ fetch('http://localhost:8000/classify', {
 });
 ```
 
+
+TO-DO: Waste density on streets, adding google maps API and cameras to find the intensity of waste outside the bin and map it in AIS with the use of ArcGIS or something.
+
 ## 🏗️ Architecture
 
 ```
