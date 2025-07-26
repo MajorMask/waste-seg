@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Waste Classifier</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2E8B57">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2E8B57, #32CD32);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+        
+        .content {
+            padding: 30px 20px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #2E8B57;
+            border-radius: 15px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            background: #f0f8ff;
+            border-color: #32CD32;
+        }
+        
+        .upload-area.dragover {
+            background: #e8f5e8;
+            border-color: #32CD32;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .camera-btn, .upload-btn {
+            background: linear-gradient(135deg, #2E8B57, #32CD32);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(46, 139, 87, 0.3);
+        }
+        
+        .camera-btn:hover, .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(46, 139, 87, 0.4);
+        }
+        
+        .preview-area {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .result-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 5px solid #2E8B57;
+        }
+        
+        .result-card h3 {
+            color: #2E8B57;
+            margin-bottom: 10px;
+        }
+        
+        .confidence-bar {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 20px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #FF6B6B, #FFE66D, #4ECDC4);
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+        
+        .recycling-info {
+            background: #e8f5e8;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .recycling-info h4 {
+            color: #2E8B57;
+            margin-bottom: 15px;
+        }
+        
+        .tip-item {
+            background: white;
+            padding: 10px 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            border-left: 3px solid #32CD32;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #2E8B57;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #c62828;
+        }
+        
+        #file-input {
+            display: none;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .content {
+                padding: 20px 15px;
+            }
+            
+            .camera-btn, .upload-btn {
+                width: 100%;
+                margin: 5px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>♻️ Smart Waste Classifier</h1>
+            <p>AI-Powered Recycling Assistant</p>
+        </div>
+        
+        <div class="content">
+            <div class="upload-area" id="upload-area">
+                <span class="upload-icon">📸</span>
+                <h3>Upload or Capture Image</h3>
+                <p>Take a photo or upload an image of your waste item</p>
+                
+                <div style="margin-top: 20px;">
+                    <button class="camera-btn" onclick="openCamera()">📷 Take Photo</button>
+                    <button class="upload-btn" onclick="openFileDialog()">📁 Upload Image</button>
+                </div>
+            </div>
+            
+            <input type="file" id="file-input" accept="image/*" capture="environment">
+            
+            <div class="preview-area" id="preview-area" style="display: none;">
+                <img id="preview-image" class="preview-image" alt="Preview">
+                <div style="margin-top: 15px;">
+                    <button class="camera-btn" onclick="classifyImage()">🔍 Classify Waste</button>
+                </div>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Analyzing image...</p>
+            </div>
+            
+            <div id="results" style="display: none;">
+                <div class="result-card">
+                    <h3 id="predicted-class">Classification Result</h3>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="confidence-fill"></div>
+                    </div>
+                    <p id="confidence-text">Confidence: 0%</p>
+                </div>
+                
+                <div class="recycling-info" id="recycling-info">
+                    <h4>♻️ Recycling Information</h4>
+                    <div id="recycling-details"></div>
+                </div>
+            </div>
+            
+            <div id="error-message" class="error" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000'; // Change this for production
+        let currentImage = null;
+        
+        // File input handling
+        document.getElementById('file-input').addEventListener('change', handleFileSelect);
+        
+        // Drag and drop
+        const uploadArea = document.getElementById('upload-area');
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('drop', handleDrop);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+        
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        }
+        
+        function openCamera() {
+            const input = document.getElementById('file-input');
+            input.setAttribute('capture', 'environment');
+            input.click();
+        }
+        
+        function openFileDialog() {
+            const input = document.getElementById('file-input');
+            input.removeAttribute('capture');
+            input.click();
+        }
+        
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+        
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showError('Please select an image file');
+                return;
+            }
+            
+            currentImage = file;
+            
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const previewImage = document.getElementById('preview-image');
+                previewImage.src = e.target.result;
+                
+                document.getElementById('preview-area').style.display = 'block';
+                document.getElementById('results').style.display = 'none';
+                hideError();
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        async function classifyImage() {
+            if (!currentImage) {
+                showError('Please select an image first');
+                return;
+            }
+            
+            showLoading();
+            hideError();
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', currentImage);
+                
+                const response = await fetch(`${API_URL}/classify`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                showResults(result);
+                
+            } catch (error) {
+                console.error('Classification error:', error);
+                showError('Failed to classify image. Please check your connection and try again.');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        function showResults(result) {
+            const prediction = result.prediction;
+            const recyclingInfo = result.recycling_info;
+            
+            // Update predicted class
+            document.getElementById('predicted-class').textContent = 
+                `${prediction.class.charAt(0).toUpperCase() + prediction.class.slice(1)}`;
+            
+            // Update confidence
+            const confidence = prediction.confidence * 100;
+            const confidenceFill = document.getElementById('confidence-fill');
+            const confidenceText = document.getElementById('confidence-text');
+            
+            confidenceFill.style.width = `${confidence}%`;
+            confidenceText.textContent = `Confidence: ${confidence.toFixed(1)}%`;
+            
+            // Update recycling info
+            const recyclingDetails = document.getElementById('recycling-details');
+            recyclingDetails.innerHTML = `
+                <div class="tip-item">
+                    <strong>📍 Disposal:</strong> ${recyclingInfo.bin}
+                </div>
+                <div class="tip-item">
+                    <strong>♻️ Recyclable:</strong> ${recyclingInfo.recyclable ? 'Yes' : 'No'}
+                </div>
+                ${recyclingInfo.tips ? recyclingInfo.tips.map(tip => 
+                    `<div class="tip-item"><strong>💡 Tip:</strong> ${tip}</div>`
+                ).join('') : ''}
+                ${recyclingInfo.environmental_impact ? 
+                    `<div class="tip-item"><strong>🌍 Impact:</strong> ${recyclingInfo.environmental_impact}</div>` : ''}
+            `;
+            
+            document.getElementById('results').style.display = 'block';
+        }
+        
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+        
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+        
+        function hideError() {
+            document.getElementById('error-message').style.display = 'none';
+        }
+        
+        // PWA installation
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            // Show install button if needed
+            const installBtn = document.createElement('button');
+            installBtn.textContent = '📱 Install App';
+            installBtn.className = 'camera-btn';
+            installBtn.onclick = async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    console.log(`User response to the install prompt: ${outcome}`);
+                    deferredPrompt = null;
+                    installBtn.remove();
+                }
+            };
+            
+            document.querySelector('.content').appendChild(installBtn);
+        });
+    </script>
+</body>
+</html>

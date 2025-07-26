@@ -1,0 +1,137 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  waste-classifier-api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./waste_classifier.pth:/app/waste_classifier.pth
+      - ./dataset_metadata.json:/app/dataset_metadata.json
+    environment:
+      - PYTHONPATH=/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./mobile_app.html:/usr/share/nginx/html/index.html
+      - ./manifest.json:/usr/share/nginx/html/manifest.json
+    depends_on:
+      - waste-classifier-api
+    restart: unless-stopped
+
+---
+# nginx.conf
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream api {
+        server waste-classifier-api:8000;
+    }
+    
+    server {
+        listen 80;
+        server_name localhost;
+        
+        # Serve static files
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+        
+        # Proxy API requests
+        location /api/ {
+            proxy_pass http://api/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        
+        # Enable gzip compression
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    }
+}
+
+---
+# manifest.json for PWA
+{
+  "name": "Smart Waste Classifier",
+  "short_name": "WasteClassifier",
+  "description": "AI-powered waste sorting and recycling assistant",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2E8B57",
+  "theme_color": "#2E8B57",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+
+---
+# railway.json (for Railway deployment)
+{
+  "build": {
+    "builder": "DOCKERFILE"
+  },
+  "deploy": {
+    "startCommand": "uvicorn fastapi_backend:app --host 0.0.0.0 --port $PORT",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300
+  }
+}
+
+---
+# vercel.json (for Vercel deployment)
+{
+  "builds": [
+    {
+      "src": "fastapi_backend.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "fastapi_backend.py"
+    }
+  ]
+}
+
+---
+# render.yaml (for Render deployment)
+services:
+  - type: web
+    name: waste-classifier-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn fastapi_backend:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.16
