@@ -48,9 +48,7 @@ class WasteClassifier(nn.Module):
     
     def forward(self, x):
         return self.backbone(x)
-        
-    def forward(self, x):
-        return self.backbone(x)
+
 
 # Global variables for model and metadata
 model = None
