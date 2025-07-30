@@ -1,5 +1,5 @@
 # 🗑️♻️ WasteSort AI - Smart Waste Classifier
-
+![alt text](image.png)
 An AI-powered waste sorting and recycling classification system using computer vision. Built with Next.js, React, TypeScript, Tailwind CSS, and FastAPI backend.
 
 ![Demo](https://img.shields.io/badge/Demo-Live-brightgreen) ![React](https://img.shields.io/badge/React-18+-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue) ![Next.js](https://img.shields.io/badge/Next.js-14+-black) ![License](https://img.shields.io/badge/License-MIT-green)
