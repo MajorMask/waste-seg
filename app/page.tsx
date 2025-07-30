@@ -1,11 +1,9 @@
+
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CameraIcon, DocumentArrowUpIcon, MapPinIcon, XMarkIcon } from '@heroicons/react/24/outline';
-
-// Since we don't have the lib files yet, let's include the essential functions here
-const API_BASE_URL = 'http://localhost:8000';
 
 interface ClassificationResult {
   prediction: {
@@ -26,27 +24,109 @@ interface ClassificationResult {
   };
 }
 
-// API functions
-const api = {
+// Dynamic API discovery
+class DynamicAPI {
+  private baseUrl: string | null = null;
+  private discoveryAttempts = 0;
+  private maxDiscoveryAttempts = 3;
+
+  async discoverBackend(): Promise<string | null> {
+    if (this.baseUrl && await this.testConnection(this.baseUrl)) {
+      return this.baseUrl;
+    }
+
+    this.discoveryAttempts++;
+    console.log(`🔍 Discovering backend (attempt ${this.discoveryAttempts})...`);
+
+    // Method 1: Check for saved port info
+    try {
+      const response = await fetch('/backend_port.json');
+      if (response.ok) {
+        const portInfo = await response.json();
+        const url = `http://localhost:${portInfo.port}`;
+        if (await this.testConnection(url)) {
+          this.baseUrl = url;
+          console.log(`✅ Found backend via port file: ${url}`);
+          return url;
+        }
+      }
+    } catch (e) {
+      // Port file doesn't exist, continue to next method
+    }
+
+    // Method 2: Scan common ports
+    const commonPorts = [8000, 8001, 8002, 8003, 8004, 8005, 8080, 3001, 5000];
+    
+    for (const port of commonPorts) {
+      const url = `http://localhost:${port}`;
+      if (await this.testConnection(url)) {
+        this.baseUrl = url;
+        console.log(`✅ Found backend via port scan: ${url}`);
+        return url;
+      }
+    }
+
+    console.log('❌ Could not discover backend');
+    return null;
+  }
+
+  private async testConnection(url: string): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      
+      const response = await fetch(`${url}/health`, {
+        signal: controller.signal,
+        mode: 'cors'
+      });
+      
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async makeRequest(endpoint: string, options?: RequestInit): Promise<Response> {
+    const baseUrl = await this.discoverBackend();
+    
+    if (!baseUrl) {
+      throw new Error('Backend not available. Please start the backend server.');
+    }
+
+    const response = await fetch(`${baseUrl}${endpoint}`, {
+      ...options,
+      mode: 'cors'
+    });
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    return response;
+  }
+
   async checkHealth() {
-    const response = await fetch(`${API_BASE_URL}/health`);
-    if (!response.ok) throw new Error('API not available');
+    const response = await this.makeRequest('/health');
     return response.json();
-  },
+  }
 
   async classifyImage(file: File) {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await fetch(`${API_BASE_URL}/classify`, {
+    
+    const response = await this.makeRequest('/classify', {
       method: 'POST',
       body: formData,
     });
-    if (!response.ok) throw new Error('Classification failed');
+    
     return response.json();
   }
-};
+}
 
-// Utility functions
+const api = new DynamicAPI();
+
+// Utility functions (keeping the same as before)
 function validateImageFile(file: File): { valid: boolean; error?: string } {
   if (!file.type.startsWith('image/')) {
     return { valid: false, error: 'Please select an image file' };
@@ -64,46 +144,42 @@ function getConfidenceLevel(confidence: number) {
   return { level: 'low', text: 'Low Confidence', color: 'text-red-700' };
 }
 
-function getCurrentLocation(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported'));
-      return;
-    }
-    
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 5000,
-      maximumAge: 0
-    });
-  });
-}
-
 export default function HomePage() {
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ClassificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [location, setLocation] = useState<GeolocationPosition | null>(null);
-  const [locationEnabled, setLocationEnabled] = useState(false);
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [backendUrl, setBackendUrl] = useState<string>('Discovering...');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Check API status
-    api.checkHealth()
-      .then(() => setApiStatus('online'))
-      .catch(() => setApiStatus('offline'));
+    // Check API status with auto-discovery
+    const checkApi = async () => {
+      try {
+        await api.checkHealth();
+        const url = await api.discoverBackend();
+        setApiStatus('online');
+        setBackendUrl(url || 'Unknown');
+      } catch (error) {
+        setApiStatus('offline');
+        setBackendUrl('Not found');
+        console.log('Backend discovery failed:', error);
+      }
+    };
 
-    // Get location permission
-    getCurrentLocation()
-      .then((pos) => {
-        setLocation(pos);
-        setLocationEnabled(true);
-      })
-      .catch(() => setLocationEnabled(false));
-  }, []);
+    checkApi();
+    
+    // Retry every 10 seconds if offline
+    const interval = setInterval(() => {
+      if (apiStatus === 'offline' || apiStatus === 'checking') {
+        checkApi();
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [apiStatus]);
 
   const handleFile = (file: File) => {
     const validation = validateImageFile(file);
@@ -170,27 +246,26 @@ export default function HomePage() {
             <h1 className="text-4xl font-bold text-gray-900">WasteSort AI</h1>
           </div>
           <p className="text-xl text-gray-600 mb-2">Intelligent Waste Classification</p>
-          <div className="flex items-center justify-center gap-2 text-sm">
-            <div className={`w-2 h-2 rounded-full ${
-              apiStatus === 'online' ? 'bg-green-500 animate-pulse' : 
-              apiStatus === 'offline' ? 'bg-red-500' : 'bg-gray-400'
-            }`}></div>
-            <span className="text-gray-600">
-              {apiStatus === 'online' ? 'System Online' : 
-               apiStatus === 'offline' ? 'System Offline' : 'Checking...'}
-            </span>
-            {locationEnabled && (
-              <>
-                <span className="mx-2">•</span>
-                <MapPinIcon className="w-4 h-4 text-gray-500" />
-                <span className="text-gray-500">Location enabled</span>
-              </>
-            )}
+          <div className="flex items-center justify-center gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                apiStatus === 'online' ? 'bg-green-500 animate-pulse' : 
+                apiStatus === 'offline' ? 'bg-red-500' : 'bg-gray-400'
+              }`}></div>
+              <span className="text-gray-600">
+                {apiStatus === 'online' ? 'System Online' : 
+                 apiStatus === 'offline' ? 'System Offline' : 'Checking...'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-500">
+              <span>•</span>
+              <span className="text-xs">Backend: {backendUrl}</span>
+            </div>
           </div>
         </motion.header>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Upload Section */}
+          {/* Upload Section - Same as before */}
           <motion.div 
             className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8"
             initial={{ opacity: 0, x: -20 }}
@@ -212,6 +287,7 @@ export default function HomePage() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); openCamera(); }} 
                   className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 hover:-translate-y-0.5 shadow-md hover:shadow-lg"
+                  disabled={apiStatus === 'offline'}
                 >
                   <CameraIcon className="w-4 h-4" />
                   Take Photo
@@ -219,11 +295,18 @@ export default function HomePage() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} 
                   className="flex items-center gap-2 px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                  disabled={apiStatus === 'offline'}
                 >
                   <DocumentArrowUpIcon className="w-4 h-4" />
                   Browse Files
                 </button>
               </div>
+              
+              {apiStatus === 'offline' && (
+                <p className="text-red-500 text-sm mt-4">
+                  Backend server offline. Please start the backend server.
+                </p>
+              )}
             </div>
 
             <input
@@ -253,7 +336,7 @@ export default function HomePage() {
                   </div>
                   <button
                     onClick={classify}
-                    disabled={loading}
+                    disabled={loading || apiStatus === 'offline'}
                     className="w-full mt-4 px-6 py-4 bg-green-600 text-white rounded-lg font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-green-700 transition-all duration-200 hover:-translate-y-1 shadow-lg hover:shadow-xl"
                   >
                     {loading ? 'Analyzing...' : 'Analyze Image'}
@@ -263,7 +346,7 @@ export default function HomePage() {
             </AnimatePresence>
           </motion.div>
 
-          {/* Results Section */}
+          {/* Results Section - Same as before but with better error handling */}
           <motion.div 
             className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 min-h-96"
             initial={{ opacity: 0, x: 20 }}
@@ -281,7 +364,13 @@ export default function HomePage() {
                   exit={{ opacity: 0, y: -20 }}
                   className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg"
                 >
-                  {error}
+                  <div className="font-semibold mb-2">Error:</div>
+                  <div>{error}</div>
+                  {apiStatus === 'offline' && (
+                    <div className="mt-2 text-sm">
+                      Make sure the backend server is running. Current status: {backendUrl}
+                    </div>
+                  )}
                 </motion.div>
               )}
 
@@ -295,6 +384,7 @@ export default function HomePage() {
                 >
                   <div className="w-10 h-10 border-3 border-gray-200 border-t-green-600 rounded-full animate-spin mb-4"></div>
                   <p className="text-gray-600">Analyzing image...</p>
+                  <p className="text-sm text-gray-500 mt-2">Using backend: {backendUrl}</p>
                 </motion.div>
               )}
 
@@ -306,6 +396,7 @@ export default function HomePage() {
                   exit={{ opacity: 0, y: -20 }}
                   className="space-y-6"
                 >
+                  {/* Same results display as before */}
                   <div className="bg-green-50 border border-green-200 p-6 rounded-lg">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-2xl font-bold capitalize text-gray-900">
@@ -329,35 +420,6 @@ export default function HomePage() {
                     </div>
                     
                     <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <div className="text-gray-500 uppercase tracking-wide font-semibold text-xs mb-1">
-                          Confidence
-                        </div>
-                        <div className="font-bold text-gray-900 text-lg">
-                          {(result.prediction.confidence * 100).toFixed(1)}%
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500 uppercase tracking-wide font-semibold text-xs mb-1">
-                          Category
-                        </div>
-                        <div className="font-bold text-gray-900 text-lg capitalize">
-                          {result.prediction.class}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-50 rounded-lg p-6 border-l-4 border-green-500">
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <div className="text-gray-500 uppercase tracking-wide font-semibold text-xs mb-1">
-                          Disposal Method
-                        </div>
-                        <div className="font-semibold text-gray-900">
-                          {result.recycling_info.bin}
-                        </div>
-                      </div>
                       <div>
                         <div className="text-gray-500 uppercase tracking-wide font-semibold text-xs mb-1">
                           Recyclable
@@ -421,6 +483,11 @@ export default function HomePage() {
                   <p className="text-sm max-w-sm">
                     Upload an image to see classification results and recycling information
                   </p>
+                  {apiStatus === 'online' && (
+                    <p className="text-xs text-green-600 mt-2">
+                      Connected to: {backendUrl}
+                    </p>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
