@@ -49,7 +49,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API Configuration
-API_URL = "http://localhost:8002"
+API_URL = "http://localhost:8000"
 
 class WasteClassifierApp:
     def __init__(self):
